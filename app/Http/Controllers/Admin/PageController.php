@@ -28,7 +28,9 @@ class PageController extends Controller
      */
     public function create(): View
     {
-        return view('admin.pages.create');
+        $templates = Page::getAvailableTemplates();
+        
+        return view('admin.pages.create', compact('templates'));
     }
 
     /**
@@ -39,11 +41,12 @@ class PageController extends Controller
         $validated = $request->validate([
             'title' => 'required|string|max:255',
             'slug' => 'nullable|string|unique:pages,slug',
-            'content' => 'required|string',
+            'body' => 'required|string',
             'excerpt' => 'nullable|string|max:500',
-            'template' => 'nullable|string|max:255',
+            'template_layout' => 'required|in:minimalist-legal,classic-grid,editorial-news,donation-campaign,event-hub',
             'featured_image' => 'nullable|image|max:2048',
-            'status' => 'required|in:draft,published',
+            'og_image' => 'nullable|image|max:2048',
+            'is_published' => 'boolean',
             'meta_title' => 'nullable|string|max:255',
             'meta_description' => 'nullable|string|max:500',
             'is_home' => 'boolean',
@@ -53,15 +56,22 @@ class PageController extends Controller
             $validated['slug'] = Str::slug($validated['title']);
         }
 
-        $validated['author_id'] = auth()->id();
+        $validated['created_by'] = auth()->id();
 
         if ($validated['is_home'] ?? false) {
             Page::where('is_home', true)->update(['is_home' => false]);
         }
 
+        // Handle featured image upload
         if ($request->hasFile('featured_image')) {
             $path = $request->file('featured_image')->store('pages', 'public');
             $validated['featured_image'] = $path;
+        }
+
+        // Handle OG image upload
+        if ($request->hasFile('og_image')) {
+            $path = $request->file('og_image')->store('pages/og', 'public');
+            $validated['og_image'] = $path;
         }
 
         Page::create($validated);
@@ -85,7 +95,9 @@ class PageController extends Controller
      */
     public function edit(Page $page): View
     {
-        return view('admin.pages.edit', compact('page'));
+        $templates = Page::getAvailableTemplates();
+        
+        return view('admin.pages.edit', compact('page', 'templates'));
     }
 
     /**
@@ -96,11 +108,12 @@ class PageController extends Controller
         $validated = $request->validate([
             'title' => 'required|string|max:255',
             'slug' => 'required|string|unique:pages,slug,' . $page->id,
-            'content' => 'required|string',
+            'body' => 'required|string',
             'excerpt' => 'nullable|string|max:500',
-            'template' => 'nullable|string|max:255',
+            'template_layout' => 'required|in:minimalist-legal,classic-grid,editorial-news,donation-campaign,event-hub',
             'featured_image' => 'nullable|image|max:2048',
-            'status' => 'required|in:draft,published',
+            'og_image' => 'nullable|image|max:2048',
+            'is_published' => 'boolean',
             'meta_title' => 'nullable|string|max:255',
             'meta_description' => 'nullable|string|max:500',
             'is_home' => 'boolean',
@@ -110,9 +123,24 @@ class PageController extends Controller
             Page::where('is_home', true)->where('id', '!=', $page->id)->update(['is_home' => false]);
         }
 
+        $validated['updated_by'] = auth()->id();
+
+        // Handle featured image upload
         if ($request->hasFile('featured_image')) {
+            if ($page->featured_image) {
+                \Illuminate\Support\Facades\Storage::disk('public')->delete($page->featured_image);
+            }
             $path = $request->file('featured_image')->store('pages', 'public');
             $validated['featured_image'] = $path;
+        }
+
+        // Handle OG image upload
+        if ($request->hasFile('og_image')) {
+            if ($page->og_image) {
+                \Illuminate\Support\Facades\Storage::disk('public')->delete($page->og_image);
+            }
+            $path = $request->file('og_image')->store('pages/og', 'public');
+            $validated['og_image'] = $path;
         }
 
         $page->update($validated);

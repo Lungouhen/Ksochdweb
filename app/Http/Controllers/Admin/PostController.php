@@ -31,10 +31,11 @@ class PostController extends Controller
      */
     public function create(): View
     {
-        $categories = Category::all();
+        $categories = Category::where('is_active', true)->get();
         $tags = Tag::all();
+        $templates = Post::getAvailableTemplates();
 
-        return view('admin.posts.create', compact('categories', 'tags'));
+        return view('admin.posts.create', compact('categories', 'tags', 'templates'));
     }
 
     /**
@@ -45,14 +46,16 @@ class PostController extends Controller
         $validated = $request->validate([
             'title' => 'required|string|max:255',
             'slug' => 'nullable|string|unique:posts,slug',
-            'content' => 'required|string',
+            'body' => 'required|string',
             'excerpt' => 'nullable|string|max:500',
-            'category_id' => 'required|exists:categories,id',
+            'category_id' => 'nullable|exists:categories,id',
             'tags' => 'nullable|array',
             'tags.*' => 'exists:tags,id',
             'featured_image' => 'nullable|image|max:2048',
-            'status' => 'required|in:draft,published,scheduled',
+            'og_image' => 'nullable|image|max:2048',
+            'status' => 'required|in:draft,published,archived',
             'published_at' => 'nullable|date',
+            'template_layout' => 'required|in:classic-grid,editorial-news,donation-campaign,event-hub,minimalist-legal',
             'meta_title' => 'nullable|string|max:255',
             'meta_description' => 'nullable|string|max:500',
         ]);
@@ -62,10 +65,18 @@ class PostController extends Controller
         }
 
         $validated['author_id'] = auth()->id();
+        $validated['created_by'] = auth()->id();
 
+        // Handle featured image upload
         if ($request->hasFile('featured_image')) {
             $path = $request->file('featured_image')->store('posts', 'public');
             $validated['featured_image'] = $path;
+        }
+
+        // Handle OG image upload
+        if ($request->hasFile('og_image')) {
+            $path = $request->file('og_image')->store('posts/og', 'public');
+            $validated['og_image'] = $path;
         }
 
         $post = Post::create($validated);
@@ -93,11 +104,12 @@ class PostController extends Controller
      */
     public function edit(Post $post): View
     {
-        $categories = Category::all();
+        $categories = Category::where('is_active', true)->get();
         $tags = Tag::all();
+        $templates = Post::getAvailableTemplates();
         $post->load('tags');
 
-        return view('admin.posts.edit', compact('post', 'categories', 'tags'));
+        return view('admin.posts.edit', compact('post', 'categories', 'tags', 'templates'));
     }
 
     /**
@@ -108,21 +120,40 @@ class PostController extends Controller
         $validated = $request->validate([
             'title' => 'required|string|max:255',
             'slug' => 'required|string|unique:posts,slug,' . $post->id,
-            'content' => 'required|string',
+            'body' => 'required|string',
             'excerpt' => 'nullable|string|max:500',
-            'category_id' => 'required|exists:categories,id',
+            'category_id' => 'nullable|exists:categories,id',
             'tags' => 'nullable|array',
             'tags.*' => 'exists:tags,id',
             'featured_image' => 'nullable|image|max:2048',
-            'status' => 'required|in:draft,published,scheduled',
+            'og_image' => 'nullable|image|max:2048',
+            'status' => 'required|in:draft,published,archived',
             'published_at' => 'nullable|date',
+            'template_layout' => 'required|in:classic-grid,editorial-news,donation-campaign,event-hub,minimalist-legal',
             'meta_title' => 'nullable|string|max:255',
             'meta_description' => 'nullable|string|max:500',
         ]);
 
+        $validated['updated_by'] = auth()->id();
+
+        // Handle featured image upload
         if ($request->hasFile('featured_image')) {
+            // Delete old image
+            if ($post->featured_image) {
+                \Illuminate\Support\Facades\Storage::disk('public')->delete($post->featured_image);
+            }
             $path = $request->file('featured_image')->store('posts', 'public');
             $validated['featured_image'] = $path;
+        }
+
+        // Handle OG image upload
+        if ($request->hasFile('og_image')) {
+            // Delete old image
+            if ($post->og_image) {
+                \Illuminate\Support\Facades\Storage::disk('public')->delete($post->og_image);
+            }
+            $path = $request->file('og_image')->store('posts/og', 'public');
+            $validated['og_image'] = $path;
         }
 
         $post->update($validated);
