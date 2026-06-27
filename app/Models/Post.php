@@ -8,16 +8,18 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Spatie\Sluggable\HasSlug;
+use Spatie\Sluggable\SlugOptions;
 
 class Post extends Model
 {
-    use HasFactory, SoftDeletes;
+    use HasFactory, SoftDeletes, HasSlug;
 
     protected $fillable = [
         'title',
         'slug',
         'excerpt',
-        'content',
+        'body',
         'category_id',
         'author_id',
         'status',
@@ -31,6 +33,9 @@ class Post extends Model
         'created_by',
         'updated_by',
         'deleted_by',
+        'template_layout',
+        'og_image',
+        'featured_image',
     ];
 
     protected $casts = [
@@ -41,6 +46,16 @@ class Post extends Model
         'seo' => 'array',
         'metadata' => 'array',
     ];
+
+    /**
+     * Get the options for generating the slug.
+     */
+    public function getSlugOptions(): SlugOptions
+    {
+        return SlugOptions::create()
+            ->generateSlugsFrom('title')
+            ->saveSlugsTo('slug');
+    }
 
     public function author(): BelongsTo
     {
@@ -54,7 +69,35 @@ class Post extends Model
 
     public function tags(): BelongsToMany
     {
-        return $this->belongsToMany(Tag::class, 'post_tag');
+        return $this->belongsToMany(Tag::class)->withTimestamps();
+    }
+
+    public function comments(): HasMany
+    {
+        return $this->hasMany(Comment::class);
+    }
+
+    /**
+     * Scope for published posts
+     */
+    public function scopePublished($query)
+    {
+        return $query->where('status', 'published')
+            ->where('published_at', '<=', now());
+    }
+
+    /**
+     * Get available templates for dropdown selection
+     */
+    public static function getAvailableTemplates(): array
+    {
+        return [
+            'classic-grid' => 'Classic Blog Grid',
+            'editorial-news' => 'Editorial News & Announcements',
+            'donation-campaign' => 'Donation Campaign Page',
+            'event-hub' => 'Event & Volunteer Hub',
+            'minimalist-legal' => 'Minimalist Legal/Info',
+        ];
     }
 
     public function creator(): BelongsTo
@@ -70,17 +113,6 @@ class Post extends Model
     public function deleter(): BelongsTo
     {
         return $this->belongsTo(User::class, 'deleted_by');
-    }
-
-    public function comments(): HasMany
-    {
-        return $this->morphMany(Comment::class, 'commentable');
-    }
-
-    public function scopePublished($query)
-    {
-        return $query->where('status', 'published')
-            ->where('published_at', '<=', now());
     }
 
     public function scopeFeatured($query)
